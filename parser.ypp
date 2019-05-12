@@ -1,0 +1,237 @@
+%{
+#include <iostream>
+#include <cstdlib>
+#include <map>
+#include <string>
+#include <vector>
+
+using namespace std;
+
+#define YYDEBUG 1
+
+void yyerror(string s){
+	cerr<<s<<endl;
+	exit(EXIT_FAILURE);
+}
+
+
+int yylex();
+
+map<string,string> tablicaTipova;
+
+%}
+
+%union{
+	string *s;
+	vector<string>* v; 
+}
+
+%token int_token double_token if_token else_token endl_token cin_token cout_token manje_jednako_token vece_jednako_token main_token
+%token desna_strelica_token leva_strelica_token nula_token return_token prazan_string_token min_token max_token 
+%token <s> id_token string_token num_token komentar_token
+
+%type <v> NizPromenljivih NizPromenljivihDef NizNaredbi
+%type <s> NizI I E RelacioniIzraz Naredba Deklaracija Definicija Ispis Citanje NizU
+
+%left '<' '>'
+%left '+' '-'
+%left '*' '/'
+
+%%
+
+
+Program: NizEntera int_token main_token '(' ')' NizEntera '{' NizEntera NizNaredbi return_token nula_token ';' NizEntera '}' NizEntera{
+	for (unsigned i = 0; i<$9->size(); i++){
+		cout<<(*$9)[i];
+	}	
+	delete $9;
+}
+;
+
+NizEntera: NizEntera '\n'				{}
+|							{}	
+;
+
+NizNaredbi: NizNaredbi Naredba				{$$ = $1; $$->push_back(*$2); delete $2;}
+|							{$$ = new vector<string>();}
+;
+
+Naredba: Deklaracija NizEntera					{$$ = new string("");}
+|komentar_token{
+	$$ = new string("#");
+	for (unsigned i = 2; i<$1->size(); i++){
+		$$ = new string(*$$ + (*$1)[i]);	
+	}
+	delete $1;
+}
+|Definicija{
+	$$ = new string("");
+	for (unsigned i = 0; i<$1->size()-1; i++){
+		$$ = new string(*$$ + (*$1)[i]);
+	}
+	delete $1;
+}
+|id_token '=' E ';'					{$$ = new string(*$1+" = "+*$3); delete $1; delete $3;}
+|Citanje						{$$ = $1;}
+|Ispis							{$$ = $1;}
+|if_token '(' RelacioniIzraz ')' '{' NizNaredbi '}'  else_token '{' NizNaredbi '}' {
+	unsigned i,j;
+	$$ = new string("if ("+*$3 + "):");
+
+	for (i = 0; i<$6->size(); i++){
+		$$ = new string(*$$+"\t"+(*$6)[i]);
+		if((*$6)[i]!="\n")
+			$$ = new string(*$$+";");		 
+	}		
+	delete $6;
+	
+	$$ = new string(*$$+"else:");	
+	
+	for (int k = $10->size()-1; k>=0; k--){
+		if((*$10)[k]!="\n"){
+			j=k; break;
+		}	
+	}	
+
+	
+	for (i = 0; i<j; i++){
+		$$ = new string(*$$+"\t"+(*$10)[i]);
+		if((*$10)[i]!="\n")
+			$$ = new string(*$$+";");			
+	}	
+	
+	$$ = new string(*$$+"\t"+(*$10)[j]);
+	
+	for (i = j+1; i<$10->size(); i++){
+		$$ = new string(*$$+"\t"+(*$10)[i]);
+	}	
+	delete $10;
+	
+}
+|'\n'							{$$ = new string("\n");}
+;
+
+Deklaracija: int_token NizPromenljivih ';'{	
+	for(unsigned i = 0; i<$2->size(); i++){
+		tablicaTipova[(*$2)[i]] = "int";
+	}	
+	delete $2;
+}
+|double_token NizPromenljivih ';'{
+	for(unsigned i = 0; i<$2->size(); i++){
+		tablicaTipova[(*$2)[i]] = "float";
+	}	
+	delete $2;		
+}
+;
+
+Definicija: int_token NizPromenljivihDef ';'{
+	$$ = new string("");
+	for(unsigned i = 0; i<$2->size(); i++)
+		$$ = new string(*$$ + (*$2)[i]);
+	delete $2;	
+}
+|double_token NizPromenljivihDef ';'{
+	$$ = new string("");
+	for(unsigned i = 0; i<$2->size(); i++)
+		$$ = new string(*$$ + (*$2)[i]);
+	delete $2;	
+}
+;
+
+NizPromenljivih: NizPromenljivih ',' id_token{
+	$$ = $1;
+	$$ -> push_back(*$3);
+	delete $3;
+}
+|id_token{
+	$$ = new vector<string>();
+	$$ -> push_back(*$1);
+	delete $1;
+}
+;
+
+NizPromenljivihDef: NizPromenljivihDef ',' id_token '=' E{
+	$$ = $1;
+	$$ -> push_back(*$3+" = "+*$5+"\n");
+	delete $3; delete $5;
+}
+|id_token '=' E{
+	$$ = new vector<string>();
+	$$ -> push_back(*$1+" = "+*$3+"\n");
+	delete $1; delete $3;
+}
+;
+
+Citanje: cin_token NizU ';'{
+
+	$$ = new string("");
+	for (unsigned i = 0; i<$2->size()-1; i++){
+		$$ = new string(*$$ + (*$2)[i]);
+	}
+	delete $2;
+}
+;
+
+NizU: NizU desna_strelica_token id_token {
+	map<string,string>::iterator tmp = tablicaTipova.find(*$3);
+	if (tmp == tablicaTipova.end())
+		yyerror("Nedefinisana promenljiva!");
+
+	$$ = new string(*$1 + *$3+" = "+tmp->second+"(input())\n");	
+	delete $1; delete $3;
+}
+|desna_strelica_token id_token{
+	map<string,string>::iterator tmp = tablicaTipova.find(*$2);
+	if (tmp == tablicaTipova.end())
+		yyerror("Nedefinisana promenljiva!");
+	$$ = new string(*$2+" = "+tmp->second+"(input())\n");
+	delete $2;
+}
+;
+
+
+Ispis: cout_token NizI leva_strelica_token endl_token ';'{
+	$$ = new string("print(");
+	for (unsigned i = 0; i<$2->size()-1; i++){
+		$$ = new string(*$$ + (*$2)[i]);
+	}
+	$$ = new string(*$$+")");
+	delete $2;
+}
+;
+
+NizI: NizI leva_strelica_token I 	{$$ = new string(*$1 + *$3); delete $1; delete $3;}
+|leva_strelica_token I			{$$ = new string(*$2); delete $2;}
+;
+
+I: string_token				{$$ = new string(*$1+","); delete $1;}
+|id_token				{$$ = new string(*$1+","); delete $1;}
+|prazan_string_token			{$$ = new string("");}
+;
+
+E: E '+' E				{$$ = new string(*$1 + " + " + *$3); delete $1; delete $3;}
+|E '-' E				{$$ = new string(*$1 + " - " + *$3); delete $1; delete $3;}
+|E '*' E				{$$ = new string(*$1 + " * " + *$3); delete $1; delete $3;}
+|E '/' E				{$$ = new string(*$1 + " / " + *$3); delete $1; delete $3;}
+|min_token '(' E ',' E ')'		{$$ = new string("min("+*$3+","+*$5+");"); delete $3; delete $5;}
+|max_token '(' E ',' E ')'		{$$ = new string("max("+*$3+","+*$5+");"); delete $3; delete $5;}
+|num_token				{$$ = $1;}
+|id_token				{$$ = $1;}
+;
+
+RelacioniIzraz: E vece_jednako_token E	{$$ = new string(*$1 + " >= " + *$3); delete $3; delete $1;}
+|E manje_jednako_token E		{$$ = new string(*$1 + " <= " + *$3); delete $3; delete $1;}
+|E '<' E				{$$ = new string(*$1 + " < " + *$3); delete $3; delete $1;}
+|E '>' E				{$$ = new string(*$1 + " > " + *$3); delete $3; delete $1;}
+;
+
+%%
+
+int main(){
+
+//yydebug = 1;
+yyparse();
+return 0;
+}
+
